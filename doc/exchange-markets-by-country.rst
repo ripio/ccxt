@@ -24,15 +24,15 @@ The ccxt library currently supports the following cryptocurrency exchange market
           :alt: API Version 2
      
    * - Argentina
-     - .. image:: https://user-images.githubusercontent.com/1294454/94507548-a83d6a80-0218-11eb-9998-28b9cec54165.jpg
-          :target: https://exchange.ripio.com
+     - .. image:: https://user-images.githubusercontent.com/1892491/179565296-42198bf8-2228-47d6-a1b5-fd763a163c9d.jpg
+          :target: https://trade.ripio.com
           :alt: ripio
      
      - ripio
-     - `Ripio <https://exchange.ripio.com>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://exchange.ripio.com/en/api/
-          :alt: API Version 1
+     - `Ripio <https://trade.ripio.com>`__
+     - .. image:: https://img.shields.io/badge/3-lightgray
+          :target: https://api.ripiotrade.co/v3/
+          :alt: API Version 3
      
    * - Australia
      - .. image:: https://user-images.githubusercontent.com/51840849/89731817-b3fb8480-da52-11ea-817f-783b08aaf32b.jpg
@@ -165,18 +165,7 @@ The ccxt library currently supports the following cryptocurrency exchange market
      - .. image:: https://img.shields.io/badge/1-lightgray
           :target: https://doc.novadax.com/pt-BR/
           :alt: API Version 1
-     
-   * - Brazil
-     - .. image:: https://user-images.githubusercontent.com/1294454/94507548-a83d6a80-0218-11eb-9998-28b9cec54165.jpg
-          :target: https://exchange.ripio.com
-          :alt: ripio
-     
-     - ripio
-     - `Ripio <https://exchange.ripio.com>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://exchange.ripio.com/en/api/
-          :alt: API Version 1
-     
+
    * - British Virgin Islands
      - .. image:: https://user-images.githubusercontent.com/1294454/27766244-e328a50c-5ed2-11e7-947b-041416579bb3.jpg
           :target: https://www.bitfinex.com/?refcode=P61eYxFL

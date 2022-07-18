@@ -1751,15 +1751,15 @@ The CCXT library currently supports the following 117 cryptocurrency exchange ma
      
      - 
      - 
-   * - .. image:: https://user-images.githubusercontent.com/1294454/94507548-a83d6a80-0218-11eb-9998-28b9cec54165.jpg
-          :target: https://exchange.ripio.com
+   * - .. image:: https://user-images.githubusercontent.com/1892491/179565296-42198bf8-2228-47d6-a1b5-fd763a163c9d.jpg
+          :target: https://trade.ripio.com
           :alt: ripio
      
      - ripio
-     - `Ripio <https://exchange.ripio.com>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://exchange.ripio.com/en/api/
-          :alt: API Version 1
+     - `Ripio <https://trade.ripio.com>`__
+     - .. image:: https://img.shields.io/badge/3-lightgray
+          :target: https://api.ripiotrade.co/v3/
+          :alt: API Version 3
      
      - 
      - .. image:: https://img.shields.io/badge/CCXT-Pro-black
