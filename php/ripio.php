@@ -20,8 +20,13 @@ class ripio extends Exchange {
             'pro' => false,
             // new metainfo interface
             'has' => array(
-                'cancelOrder' => true,
                 'CORS' => null,
+                'spot' => true,
+                'margin' => null,
+                'swap' => null,
+                'future' => null,
+                'option' => null,
+                'cancelOrder' => true,
                 'createOrder' => true,
                 'fetchBalance' => true,
                 'fetchClosedOrders' => true,
@@ -118,11 +123,11 @@ class ripio extends Exchange {
         //   "message" => null,
         //   "data" => array(
         //     {
-        //       "$base" => "BTC",
+        //       "base" => "BTC",
         //       "base_name" => "string",
-        //       "$quote" => "BRL",
+        //       "quote" => "BRL",
         //       "quote_name" => "string",
-        //       "$symbol" => "BRLBTC",
+        //       "symbol" => "BRLBTC",
         //       "enabled" => true,
         //       "min_amount" => 0,
         //       "price_tick" => 0,
@@ -187,11 +192,11 @@ class ripio extends Exchange {
         //   "message" => null,
         //   "data" => array(
         //     {
-        //       "$active" => true,
-        //       "$code" => "BTC",
-        //       "$min_withdraw_amount" => 0,
-        //       "$name" => "string",
-        //       "$precision" => 0
+        //       "active" => true,
+        //       "code" => "BTC",
+        //       "min_withdraw_amount" => 0,
+        //       "name" => "string",
+        //       "precision" => 0
         //     }
         //   )
         // }
@@ -222,10 +227,18 @@ class ripio extends Exchange {
         return $result;
     }
 
+    public function parse_symbol($symbol) {
+        $currencies = explode('/', $symbol);
+        $quote = $currencies[1];
+        $base = $currencies[0];
+        return $quote . $base;
+    }
+
     public function fetch_ticker($symbol, $params = array ()) {
         $this->load_markets();
+        $ripioSymbol = $this->parse_symbol($symbol);
         $request = array(
-            'pair' => $this->market_id($symbol),
+            'pair' => $this->market_id($ripioSymbol),
         );
         $response = $this->publicGetPairTicker (array_merge($request, $params));
         // {
@@ -235,14 +248,14 @@ class ripio extends Exchange {
         //     "low" => 15000.12,
         //     "volume" => 123.12345678,
         //     "trades_quantity" => 123,
-        //     "$last" => 15500.12,
+        //     "last" => 15500.12,
         //     "buy" => 15400.12,
         //     "sell" => 15600.12,
         //     "date" => "2017-10-20T00:00:00Z"
         //  }
         // }
-        $ticker = $this->safe_value($response, 'ticker', array());
-        $timestamp = $this->parse_date($this->safe_string($response, 'date'));
+        $ticker = $this->safe_value($response, 'data', array());
+        $timestamp = $this->parse_date($this->safe_string($ticker, 'date'));
         $last = $this->safe_number($ticker, 'last');
         return array(
             'symbol' => $symbol,
@@ -270,43 +283,42 @@ class ripio extends Exchange {
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
         $this->load_markets();
-        $params = array_merge($params, array( 'pair' => $this->market_id($symbol) ));
-        $response = $this->privateGetMarket ($params);
+        $ripioSymbol = $this->parse_symbol($symbol);
+        $params = array_merge($params, array( 'pair' => $this->market_id($ripioSymbol) ));
+        $response = $this->publicGetPairOrders ($params);
         // {
-        //   "data" => {
-        //     "buying" => array(
-        //       {
-        //         "unit_price" => 54049,
-        //         "code" => "BypTSfJSz",
-        //         "user_code" => "H1u6_cuGM",
-        //         "amount" => 0.02055746
-        //       }
+        //     "data" => {
+        //         "asks" => array(
+        //             {
+        //                 "amount" => 197,
+        //                 "code" => "qeM4ZCp1E",
+        //                 "unit_price" => 60
+        //             }
+        //         ),
+        //         "bids" => array(
+        //             array(
+        //                 "amount" => 20,
+        //                 "code" => "DbqCd9e4_",
+        //                 "unit_price" => 50
+        //             }
+        //         )
         //     ),
-        //     "selling" => array(
-        //       {
-        //         "unit_price" => 1923847,
-        //         "code" => "IasDflk",
-        //         "user_code" => "H1u6_cuGM",
-        //         "amount" => 0.1283746
-        //       }
-        //     ),
-        //     ...
-        //   }
+        //     "message" => null
         // }
-        $orderbook = $this->parse_order_book($response['data'], $symbol, null, 'buying', 'selling', 'unit_price', 'amount');
+        $orderbook = $this->parse_order_book($response['data'], $symbol, null, 'bids', 'asks', 'unit_price', 'amount');
         return $orderbook;
     }
 
     public function parse_trade($trade, $market = null) {
-        $timestamp = $this->parse_date($this->safe_string($trade, 'timestamp'));
+        $timestamp = $this->parse_date($this->safe_string($trade, 'date'));
         $id = $timestamp;
         $side = $this->safe_string_lower($trade, 'type');
-        $takerOrMaker = 'taker';
-        $priceString = $this->safe_number($trade, 'unit_price');
-        $amountString = $this->safe_number($trade, 'amount');
+        $takerOrMaker = null;
+        $priceString = $this->safe_string($trade, 'unit_price');
+        $amountString = $this->safe_string($trade, 'amount');
         $price = $this->parse_number($priceString);
         $amount = $this->parse_number($amountString);
-        $cost = $this->parse_number(Precise.mul ($priceString, $amountString));
+        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $fee = null;
         return array(
             'id' => $id,
@@ -325,8 +337,8 @@ class ripio extends Exchange {
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
         $this->load_markets();
-        $market = $this->market($symbol);
-        $params = array_merge($params, array( 'pair' => $this->market_id($symbol) ));
+        $ripioSymbol = $this->parse_symbol($symbol);
+        $params = array_merge($params, array( 'pair' => $this->market_id($ripioSymbol) ));
         $response = $this->publicGetPairTrades ($params);
         // {
         //   "message" => null,
@@ -365,7 +377,9 @@ class ripio extends Exchange {
         //     }
         //   }
         // }
-        return $this->parse_trades($response, $market, $since, $limit);
+        $data = $this->safe_value($response, 'data');
+        $trades = $this->safe_value($data, 'trades');
+        return $this->parse_trades($trades, null, $since, $limit);
     }
 
     public function fetch_balance($params = array ()) {
@@ -395,29 +409,32 @@ class ripio extends Exchange {
         //   )
         // }
         $result = array( 'info' => $response );
-        for ($i = 0; $i < count($response); $i++) {
-            $balance = $response[$i];
-            $currencyId = $this->safe_string($balance, 'symbol');
+        $data = $this->safe_value($response, 'data');
+        for ($i = 0; $i < count($data); $i++) {
+            $balance = $data[$i];
+            $currencyId = $this->safe_string($balance, 'currency_code');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['free'] = $this->safe_string($balance, 'available_amount');
-            $account['used'] = $this->safe_string($balance, 'locked_amount');
+            $account['free'] = $this->safe_number($balance, 'available_amount');
+            $account['used'] = $this->safe_number($balance, 'locked_amount');
+            $account['total'] = $this->safe_number($balance, 'available_amount') . $this->safe_number($balance, 'locked_amount');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
         $this->load_markets();
+        $ripioSymbol = $this->parse_symbol($symbol);
         $uppercaseType = strtoupper($type);
         $uppercaseSide = strtoupper($side);
         $request = array(
-            'pair' => $this->market_id($symbol),
-            'order_type' => $uppercaseType, // LIMIT, MARKET
-            'side' => $uppercaseSide, // BUY or SELL
+            'pair' => $this->market_id($ripioSymbol),
+            'subtype' => $uppercaseType, // LIMIT, MARKET
+            'type' => $uppercaseSide, // BUY or SELL
             'amount' => $this->parse_number($amount),
         );
-        if ($uppercaseType === 'limited') {
+        if ($uppercaseType === 'LIMITED') {
             $request['unit_price'] = $this->parse_number($price);
         }
         $response = $this->privatePostMarketCreateOrder (array_merge($request, $params));
@@ -432,7 +449,8 @@ class ripio extends Exchange {
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
         $this->load_markets();
-        $market = $this->market($symbol);
+        $ripioSymbol = $this->parse_symbol($symbol);
+        $market = $this->market($ripioSymbol);
         $request = array( 'code' => $id );
         $response = $this->privateDeleteMarketUserOrders (array_merge($request, $params));
         // {
@@ -465,59 +483,65 @@ class ripio extends Exchange {
         $request = array( 'code' => $id );
         $response = $this->privateGetMarketUserOrdersCode (array_merge($request, $params));
         // {
-        //   "message" => null,
-        //   "data" => {
-        //     "code" => "SkvtQoOZf",
-        //     "type" => "buy",
-        //     "subtype" => "limited",
-        //     "requested_amount" => 0.02347418,
-        //     "remaining_amount" => 0,
-        //     "unit_price" => 42600,
-        //     "status" => "executed_completely",
-        //     "create_date" => "2017-12-08T23:42:54.960Z",
-        //     "update_date" => "2017-12-13T21:48:48.817Z",
-        //     "pair" => "BRLBTC",
-        //     "total_price" => 1000,
-        //     "executed_amount" => 0.02347418,
-        //     "remaining_price" => 0,
-        //     "transactions" => array(
-        //       array(
-        //         "amount" => 0.2,
-        //         "create_date" => "2020-02-21 20:24:43.433",
-        //         "total_price" => 1000,
-        //         "unit_price" => 5000
-        //       ),
-        //       {
-        //         "amount" => 0.2,
-        //         "create_date" => "2020-02-21 20:49:37.450",
-        //         "total_price" => 1000,
-        //         "unit_price" => 5000
-        //       }
-        //     )
-        //   }
+        //     "data" => {
+        //         "code" => "ZAeXh5ief",
+        //         "create_date" => "2022-07-11T13:47:17.590Z",
+        //         "executed_amount" => 30.09664345,
+        //         "pair" => "BRLCELO",
+        //         "remaining_amount" => 0,
+        //         "remaining_price" => 0,
+        //         "requested_amount" => 30.09664345,
+        //         "status" => "executed_completely",
+        //         "subtype" => "market",
+        //         "total_price" => 499.94,
+        //         "type" => "buy",
+        //         "unit_price" => 16.61115469,
+        //         "update_date" => "2022-07-11T13:47:17.610Z",
+        //         "transactions" => array(
+        //             array(
+        //                 "amount" => 30,
+        //                 "create_date" => "2022-07-11T13:47:17.603Z",
+        //                 "total_price" => 210,
+        //                 "unit_price" => 7
+        //             ),
+        //             array(
+        //                 "amount" => 0.09664345,
+        //                 "create_date" => "2022-07-11T13:47:17.607Z",
+        //                 "total_price" => 289.94,
+        //                 "unit_price" => 3000.1
+        //             }
+        //         )
+        //     ),
+        //     "message" => null
         // }
-        return $this->parse_order($response, $market);
+        $data = $this->safe_value($response, 'data');
+        return $this->parse_order($data, $market);
     }
 
     public function fetch_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
         if ($symbol === null) {
             throw new ArgumentsRequired($this->id . ' fetchOrders() requires a $symbol argument');
         }
+        $ripioSymbol = $this->parse_symbol($symbol);
         $this->load_markets();
-        $market = $this->market($symbol);
         $request = array(
-            'pair' => $this->market_id($symbol),
-            // 'status' => 'executed_partially,waiting,pending_creation,executed_completely,canceled' ,
-            // 'page_size' => 200,
-            // 'current_page' => 1,
+            'pair' => $this->market_id($ripioSymbol),
         );
         if ($limit !== null) {
-            $request['current_page'] = $limit;
+            $request['page_size'] = $limit;
+        }
+        $side = $this->safe_string($params, 'side', null);
+        if ($side) {
+            $request['type'] = $side;
+        }
+        $status = $this->safe_string($params, 'status', null);
+        if ($status) {
+            $request['status'] = $status;
         }
         $response = $this->privateGetMarketUserOrdersList (array_merge($request, $params));
         // {
         //   "message" => null,
-        //   "$data" => {
+        //   "data" => {
         //     "orders" => array(
         //       array(
         //         "code" => "SkvtQoOZf",
@@ -537,7 +561,7 @@ class ripio extends Exchange {
         //       {
         //         "code" => "SyYpGa8p_",
         //         "type" => "buy",
-        //         "subtype" => "$market",
+        //         "subtype" => "market",
         //         "requested_amount" => 0.00033518,
         //         "remaining_amount" => 0,
         //         "unit_price" => 16352.12,
@@ -558,30 +582,30 @@ class ripio extends Exchange {
         //     }
         //   }
         // }
-        $results = $this->safe_value($response, 'results', array());
-        $data = $this->safe_value($results, 'data', array());
-        return $this->parse_orders($data, $market, $since, $limit);
+        $data = $this->safe_value($response, 'data', array());
+        $orders = $this->safe_value($data, 'orders', array());
+        return $this->parse_orders($orders, null, $since, $limit);
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
         $request = array(
-            'status' => 'executed_partially,waiting,pending_creation',
+            'status' => array( 'executed_partially', 'waiting' ),
         );
         return $this->fetch_orders($symbol, $since, $limit, array_merge($request, $params));
     }
 
     public function fetch_closed_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
         $request = array(
-            'status' => 'executed_completely,canceled',
+            'status' => array( 'executed_completely', 'canceled' ),
         );
         return $this->fetch_orders($symbol, $since, $limit, array_merge($request, $params));
     }
 
     public function parse_order_status($status) {
         $statuses = array(
-            'executed_completely' => 'executed completely',
-            'executed_partially' => 'executed partially',
-            'waiting' => 'waiting',
+            'executed_completely' => 'closed',
+            'executed_partially' => 'open',
+            'waiting' => 'open',
             'canceled' => 'canceled',
             'pending_creation' => 'pending creation',
         );
@@ -590,13 +614,13 @@ class ripio extends Exchange {
 
     public function parse_order($order, $market = null) {
         // {
-        //     "$code" => "SkvtQoOZf",
-        //     "$type" => "buy",
+        //     "code" => "SkvtQoOZf",
+        //     "type" => "buy",
         //     "subtype" => "limited",
         //     "requested_amount" => 0.02347418,
         //     "remaining_amount" => 0,
         //     "unit_price" => 42600,
-        //     "$status" => "executed_completely",
+        //     "status" => "executed_completely",
         //     "create_date" => "2017-12-08T23:42:54.960Z",
         //     "update_date" => "2017-12-13T21:48:48.817Z",
         //     "pair" => "BRLBTC",
@@ -606,18 +630,18 @@ class ripio extends Exchange {
         // }
         $code = $this->safe_string($order, 'code');
         $amount = $this->safe_number($order, 'requested_amount');
-        $cost = null;
         $type = $this->safe_string_lower($order, 'subtype');
         $price = $this->safe_number($order, 'unit_price');
         $side = $this->safe_string_lower($order, 'type');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        $timestamp = $this->parse_date($this->safe_string($order, 'created_at'));
+        $timestamp = $this->parse_date($this->safe_string($order, 'create_date'));
         $average = null;
         $filled = $this->safe_number($order, 'executed_amount');
+        $cost = $this->parse_number(Precise::string_mul($this->safe_string($order, 'unit_price'), $this->safe_string($order, 'executed_amount')));
         $trades = null;
         $lastTradeTimestamp = $this->parse_date($this->safe_string($order, 'update_date'));
         $remaining = $this->safe_number($order, 'remaining_amount');
-        $symbol = $this->safe_symbol($order, 'pair');
+        $symbol = $market;
         return array(
             'id' => $code,
             'clientOrderId' => null,
@@ -644,16 +668,16 @@ class ripio extends Exchange {
     }
 
     public function sign($path, $api = 'public', $method = 'GET', $params = array (), $headers = null, $body = null) {
-        $request = '/' . $this->version . '/' . $this->implode_params($path, $params);
+        $request = '/' . $this->implode_params($path, $params);
         $url = $this->urls['api'][$api] . $request;
         $query = $this->omit($params, $this->extract_params($path));
         if ($api === 'public') {
             if ($query) {
                 $url .= '?' . $this->urlencode($query);
             }
-        } else if ($api === 'private') {
+        } elseif ($api === 'private') {
             $this->check_required_credentials();
-            if ($method === 'POST') {
+            if ($method === 'POST' || $method === 'DELETE') {
                 $body = $this->json($query);
             } else {
                 if ($query) {
@@ -662,7 +686,7 @@ class ripio extends Exchange {
             }
             $headers = array(
                 'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'x-api-key' => $this->apiKey,
             );
         }
         return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );

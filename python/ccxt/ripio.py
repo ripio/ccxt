@@ -33,8 +33,13 @@ class ripio(Exchange):
             'pro': False,
             # new metainfo interface
             'has': {
-                'cancelOrder': True,
                 'CORS': None,
+                'spot': True,
+                'margin': None,
+                'swap': None,
+                'future': None,
+                'option': None,
+                'cancelOrder': True,
                 'createOrder': True,
                 'fetchBalance': True,
                 'fetchClosedOrders': True,
@@ -230,10 +235,17 @@ class ripio(Exchange):
             }
         return result
 
+    def parse_symbol(self, symbol):
+        currencies = symbol.split('/')
+        quote = currencies[1]
+        base = currencies[0]
+        return quote + base
+
     def fetch_ticker(self, symbol, params={}):
         self.load_markets()
+        ripioSymbol = self.parse_symbol(symbol)
         request = {
-            'pair': self.market_id(symbol),
+            'pair': self.market_id(ripioSymbol),
         }
         response = self.publicGetPairTicker(self.extend(request, params))
         # {
@@ -249,8 +261,8 @@ class ripio(Exchange):
         #     "date": "2017-10-20T00:00:00Z"
         #  }
         # }
-        ticker = self.safe_value(response, 'ticker', {})
-        timestamp = self.parse_date(self.safe_string(response, 'date'))
+        ticker = self.safe_value(response, 'data', {})
+        timestamp = self.parse_date(self.safe_string(ticker, 'date'))
         last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
@@ -277,42 +289,41 @@ class ripio(Exchange):
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
-        params = self.extend(params, {'pair': self.market_id(symbol)})
-        response = self.privateGetMarket(params)
+        ripioSymbol = self.parse_symbol(symbol)
+        params = self.extend(params, {'pair': self.market_id(ripioSymbol)})
+        response = self.publicGetPairOrders(params)
         # {
-        #   "data": {
-        #     "buying": [
-        #       {
-        #         "unit_price": 54049,
-        #         "code": "BypTSfJSz",
-        #         "user_code": "H1u6_cuGM",
-        #         "amount": 0.02055746
-        #       }
-        #     ],
-        #     "selling": [
-        #       {
-        #         "unit_price": 1923847,
-        #         "code": "IasDflk",
-        #         "user_code": "H1u6_cuGM",
-        #         "amount": 0.1283746
-        #       }
-        #     ],
-        #     ...
-        #   }
+        #     "data": {
+        #         "asks": [
+        #             {
+        #                 "amount": 197,
+        #                 "code": "qeM4ZCp1E",
+        #                 "unit_price": 60
+        #             }
+        #         ],
+        #         "bids": [
+        #             {
+        #                 "amount": 20,
+        #                 "code": "DbqCd9e4_",
+        #                 "unit_price": 50
+        #             }
+        #         ]
+        #     },
+        #     "message": null
         # }
-        orderbook = self.parse_order_book(response['data'], symbol, None, 'buying', 'selling', 'unit_price', 'amount')
+        orderbook = self.parse_order_book(response['data'], symbol, None, 'bids', 'asks', 'unit_price', 'amount')
         return orderbook
 
     def parse_trade(self, trade, market=None):
-        timestamp = self.parse_date(self.safe_string(trade, 'timestamp'))
+        timestamp = self.parse_date(self.safe_string(trade, 'date'))
         id = timestamp
         side = self.safe_string_lower(trade, 'type')
-        takerOrMaker = 'taker'
-        priceString = self.safe_number(trade, 'unit_price')
-        amountString = self.safe_number(trade, 'amount')
+        takerOrMaker = None
+        priceString = self.safe_string(trade, 'unit_price')
+        amountString = self.safe_string(trade, 'amount')
         price = self.parse_number(priceString)
         amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.mul(priceString, amountString))
+        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         fee = None
         return {
             'id': id,
@@ -330,8 +341,8 @@ class ripio(Exchange):
 
     def fetch_trades(self, symbol, since=None, limit=None, params={}):
         self.load_markets()
-        market = self.market(symbol)
-        params = self.extend(params, {'pair': self.market_id(symbol)})
+        ripioSymbol = self.parse_symbol(symbol)
+        params = self.extend(params, {'pair': self.market_id(ripioSymbol)})
         response = self.publicGetPairTrades(params)
         # {
         #   "message": null,
@@ -370,7 +381,9 @@ class ripio(Exchange):
         #     }
         #   }
         # }
-        return self.parse_trades(response, market, since, limit)
+        data = self.safe_value(response, 'data')
+        trades = self.safe_value(data, 'trades')
+        return self.parse_trades(trades, None, since, limit)
 
     def fetch_balance(self, params={}):
         self.load_markets()
@@ -399,27 +412,30 @@ class ripio(Exchange):
         #   ]
         # }
         result = {'info': response}
-        for i in range(0, len(response)):
-            balance = response[i]
-            currencyId = self.safe_string(balance, 'symbol')
+        data = self.safe_value(response, 'data')
+        for i in range(0, len(data)):
+            balance = data[i]
+            currencyId = self.safe_string(balance, 'currency_code')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_string(balance, 'available_amount')
-            account['used'] = self.safe_string(balance, 'locked_amount')
+            account['free'] = self.safe_number(balance, 'available_amount')
+            account['used'] = self.safe_number(balance, 'locked_amount')
+            account['total'] = self.safe_number(balance, 'available_amount') + self.safe_number(balance, 'locked_amount')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
+        ripioSymbol = self.parse_symbol(symbol)
         uppercaseType = type.upper()
         uppercaseSide = side.upper()
         request = {
-            'pair': self.market_id(symbol),
-            'order_type': uppercaseType,  # LIMIT, MARKET
-            'side': uppercaseSide,  # BUY or SELL
+            'pair': self.market_id(ripioSymbol),
+            'subtype': uppercaseType,  # LIMIT, MARKET
+            'type': uppercaseSide,  # BUY or SELL
             'amount': self.parse_number(amount),
         }
-        if uppercaseType == 'limited':
+        if uppercaseType == 'LIMITED':
             request['unit_price'] = self.parse_number(price)
         response = self.privatePostMarketCreateOrder(self.extend(request, params))
         # {
@@ -432,7 +448,8 @@ class ripio(Exchange):
 
     def cancel_order(self, id, symbol=None, params={}):
         self.load_markets()
-        market = self.market(symbol)
+        ripioSymbol = self.parse_symbol(symbol)
+        market = self.market(ripioSymbol)
         request = {'code': id}
         response = self.privateDeleteMarketUserOrders(self.extend(request, params))
         # {
@@ -463,52 +480,56 @@ class ripio(Exchange):
         request = {'code': id}
         response = self.privateGetMarketUserOrdersCode(self.extend(request, params))
         # {
-        #   "message": null,
-        #   "data": {
-        #     "code": "SkvtQoOZf",
-        #     "type": "buy",
-        #     "subtype": "limited",
-        #     "requested_amount": 0.02347418,
-        #     "remaining_amount": 0,
-        #     "unit_price": 42600,
-        #     "status": "executed_completely",
-        #     "create_date": "2017-12-08T23:42:54.960Z",
-        #     "update_date": "2017-12-13T21:48:48.817Z",
-        #     "pair": "BRLBTC",
-        #     "total_price": 1000,
-        #     "executed_amount": 0.02347418,
-        #     "remaining_price": 0,
-        #     "transactions": [
-        #       {
-        #         "amount": 0.2,
-        #         "create_date": "2020-02-21 20:24:43.433",
-        #         "total_price": 1000,
-        #         "unit_price": 5000
-        #       },
-        #       {
-        #         "amount": 0.2,
-        #         "create_date": "2020-02-21 20:49:37.450",
-        #         "total_price": 1000,
-        #         "unit_price": 5000
-        #       }
-        #     ]
-        #   }
+        #     "data": {
+        #         "code": "ZAeXh5ief",
+        #         "create_date": "2022-07-11T13:47:17.590Z",
+        #         "executed_amount": 30.09664345,
+        #         "pair": "BRLCELO",
+        #         "remaining_amount": 0,
+        #         "remaining_price": 0,
+        #         "requested_amount": 30.09664345,
+        #         "status": "executed_completely",
+        #         "subtype": "market",
+        #         "total_price": 499.94,
+        #         "type": "buy",
+        #         "unit_price": 16.61115469,
+        #         "update_date": "2022-07-11T13:47:17.610Z",
+        #         "transactions": [
+        #             {
+        #                 "amount": 30,
+        #                 "create_date": "2022-07-11T13:47:17.603Z",
+        #                 "total_price": 210,
+        #                 "unit_price": 7
+        #             },
+        #             {
+        #                 "amount": 0.09664345,
+        #                 "create_date": "2022-07-11T13:47:17.607Z",
+        #                 "total_price": 289.94,
+        #                 "unit_price": 3000.1
+        #             }
+        #         ]
+        #     },
+        #     "message": null
         # }
-        return self.parse_order(response, market)
+        data = self.safe_value(response, 'data')
+        return self.parse_order(data, market)
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
             raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
+        ripioSymbol = self.parse_symbol(symbol)
         self.load_markets()
-        market = self.market(symbol)
         request = {
-            'pair': self.market_id(symbol),
-            # 'status': 'executed_partially,waiting,pending_creation,executed_completely,canceled' ,
-            # 'page_size': 200,
-            # 'current_page': 1,
+            'pair': self.market_id(ripioSymbol),
         }
         if limit is not None:
-            request['current_page'] = limit
+            request['page_size'] = limit
+        side = self.safe_string(params, 'side', None)
+        if side:
+            request['type'] = side
+        status = self.safe_string(params, 'status', None)
+        if status:
+            request['status'] = status
         response = self.privateGetMarketUserOrdersList(self.extend(request, params))
         # {
         #   "message": null,
@@ -553,27 +574,27 @@ class ripio(Exchange):
         #     }
         #   }
         # }
-        results = self.safe_value(response, 'results', {})
-        data = self.safe_value(results, 'data', [])
-        return self.parse_orders(data, market, since, limit)
+        data = self.safe_value(response, 'data', {})
+        orders = self.safe_value(data, 'orders', [])
+        return self.parse_orders(orders, None, since, limit)
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         request = {
-            'status': 'executed_partially,waiting,pending_creation',
+            'status': ['executed_partially', 'waiting'],
         }
         return self.fetch_orders(symbol, since, limit, self.extend(request, params))
 
     def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
         request = {
-            'status': 'executed_completely,canceled',
+            'status': ['executed_completely', 'canceled'],
         }
         return self.fetch_orders(symbol, since, limit, self.extend(request, params))
 
     def parse_order_status(self, status):
         statuses = {
-            'executed_completely': 'executed completely',
-            'executed_partially': 'executed partially',
-            'waiting': 'waiting',
+            'executed_completely': 'closed',
+            'executed_partially': 'open',
+            'waiting': 'open',
             'canceled': 'canceled',
             'pending_creation': 'pending creation',
         }
@@ -597,18 +618,18 @@ class ripio(Exchange):
         # }
         code = self.safe_string(order, 'code')
         amount = self.safe_number(order, 'requested_amount')
-        cost = None
         type = self.safe_string_lower(order, 'subtype')
         price = self.safe_number(order, 'unit_price')
         side = self.safe_string_lower(order, 'type')
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        timestamp = self.parse_date(self.safe_string(order, 'created_at'))
+        timestamp = self.parse_date(self.safe_string(order, 'create_date'))
         average = None
         filled = self.safe_number(order, 'executed_amount')
+        cost = self.parse_number(Precise.string_mul(self.safe_string(order, 'unit_price'), self.safe_string(order, 'executed_amount')))
         trades = None
         lastTradeTimestamp = self.parse_date(self.safe_string(order, 'update_date'))
         remaining = self.safe_number(order, 'remaining_amount')
-        symbol = self.safe_symbol(order, 'pair')
+        symbol = market
         return {
             'id': code,
             'clientOrderId': None,
@@ -634,7 +655,7 @@ class ripio(Exchange):
         }
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        request = '/' + self.version + '/' + self.implode_params(path, params)
+        request = '/' + self.implode_params(path, params)
         url = self.urls['api'][api] + request
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
@@ -642,14 +663,14 @@ class ripio(Exchange):
                 url += '?' + self.urlencode(query)
         elif api == 'private':
             self.check_required_credentials()
-            if method == 'POST':
+            if method == 'POST' or method == 'DELETE':
                 body = self.json(query)
             else:
                 if query:
                     url += '?' + self.urlencode(query)
             headers = {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + self.apiKey,
+                'x-api-key': self.apiKey,
             }
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
