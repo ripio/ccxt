@@ -429,6 +429,7 @@ class ripio extends Exchange {
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
         yield $this->load_markets();
         $ripioSymbol = $this->parse_symbol($symbol);
+        $market = $this->market($ripioSymbol);
         $uppercaseType = strtoupper($type) === 'LIMIT' ? 'LIMITED' : 'MARKET';
         $uppercaseSide = strtoupper($side);
         $request = array(
@@ -447,7 +448,43 @@ class ripio extends Exchange {
         //     "code" => "string"
         //   }
         // }
-        return $response['data']['code'];
+        $code = $response['data']['code'];
+        $getOrderRequest = array( 'code' => $code );
+        $getOrderResponse = yield $this->privateGetMarketUserOrdersCode (array_merge($getOrderRequest, $params));
+        // {
+        //     "data" => {
+        //         "code" => "ZAeXh5ief",
+        //         "create_date" => "2022-07-11T13:47:17.590Z",
+        //         "executed_amount" => 30.09664345,
+        //         "pair" => "BRLCELO",
+        //         "remaining_amount" => 0,
+        //         "remaining_price" => 0,
+        //         "requested_amount" => 30.09664345,
+        //         "status" => "executed_completely",
+        //         "subtype" => "market",
+        //         "total_price" => 499.94,
+        //         "type" => "buy",
+        //         "unit_price" => 16.61115469,
+        //         "update_date" => "2022-07-11T13:47:17.610Z",
+        //         "transactions" => array(
+        //             array(
+        //                 "amount" => 30,
+        //                 "create_date" => "2022-07-11T13:47:17.603Z",
+        //                 "total_price" => 210,
+        //                 "unit_price" => 7
+        //             ),
+        //             array(
+        //                 "amount" => 0.09664345,
+        //                 "create_date" => "2022-07-11T13:47:17.607Z",
+        //                 "total_price" => 289.94,
+        //                 "unit_price" => 3000.1
+        //             }
+        //         )
+        //     ),
+        //     "message" => null
+        // }
+        $data = $this->safe_value($getOrderResponse, 'data');
+        return $this->parse_order($data, $market);
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {

@@ -429,6 +429,7 @@ class ripio(Exchange):
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
         ripioSymbol = self.parse_symbol(symbol)
+        market = self.market(ripioSymbol)
         uppercaseType = 'LIMITED' if type.upper() == 'LIMIT' else 'MARKET'
         uppercaseSide = side.upper()
         request = {
@@ -446,7 +447,43 @@ class ripio(Exchange):
         #     "code": "string"
         #   }
         # }
-        return response['data']['code']
+        code = response['data']['code']
+        getOrderRequest = {'code': code}
+        getOrderResponse = self.privateGetMarketUserOrdersCode(self.extend(getOrderRequest, params))
+        # {
+        #     "data": {
+        #         "code": "ZAeXh5ief",
+        #         "create_date": "2022-07-11T13:47:17.590Z",
+        #         "executed_amount": 30.09664345,
+        #         "pair": "BRLCELO",
+        #         "remaining_amount": 0,
+        #         "remaining_price": 0,
+        #         "requested_amount": 30.09664345,
+        #         "status": "executed_completely",
+        #         "subtype": "market",
+        #         "total_price": 499.94,
+        #         "type": "buy",
+        #         "unit_price": 16.61115469,
+        #         "update_date": "2022-07-11T13:47:17.610Z",
+        #         "transactions": [
+        #             {
+        #                 "amount": 30,
+        #                 "create_date": "2022-07-11T13:47:17.603Z",
+        #                 "total_price": 210,
+        #                 "unit_price": 7
+        #             },
+        #             {
+        #                 "amount": 0.09664345,
+        #                 "create_date": "2022-07-11T13:47:17.607Z",
+        #                 "total_price": 289.94,
+        #                 "unit_price": 3000.1
+        #             }
+        #         ]
+        #     },
+        #     "message": null
+        # }
+        data = self.safe_value(getOrderResponse, 'data')
+        return self.parse_order(data, market)
 
     def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:

@@ -428,6 +428,7 @@ module.exports = class ripio extends Exchange {
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
         await this.loadMarkets ();
         const ripioSymbol = this.parseSymbol (symbol);
+        const market = this.market (ripioSymbol);
         const uppercaseType = type.toUpperCase () === 'LIMIT' ? 'LIMITED' : 'MARKET';
         const uppercaseSide = side.toUpperCase ();
         const request = {
@@ -446,7 +447,43 @@ module.exports = class ripio extends Exchange {
         //     "code": "string"
         //   }
         // }
-        return response['data']['code'];
+        const code = response['data']['code'];
+        const getOrderRequest = { 'code': code };
+        const getOrderResponse = await this.privateGetMarketUserOrdersCode (this.extend (getOrderRequest, params));
+        // {
+        //     "data": {
+        //         "code": "ZAeXh5ief",
+        //         "create_date": "2022-07-11T13:47:17.590Z",
+        //         "executed_amount": 30.09664345,
+        //         "pair": "BRLCELO",
+        //         "remaining_amount": 0,
+        //         "remaining_price": 0,
+        //         "requested_amount": 30.09664345,
+        //         "status": "executed_completely",
+        //         "subtype": "market",
+        //         "total_price": 499.94,
+        //         "type": "buy",
+        //         "unit_price": 16.61115469,
+        //         "update_date": "2022-07-11T13:47:17.610Z",
+        //         "transactions": [
+        //             {
+        //                 "amount": 30,
+        //                 "create_date": "2022-07-11T13:47:17.603Z",
+        //                 "total_price": 210,
+        //                 "unit_price": 7
+        //             },
+        //             {
+        //                 "amount": 0.09664345,
+        //                 "create_date": "2022-07-11T13:47:17.607Z",
+        //                 "total_price": 289.94,
+        //                 "unit_price": 3000.1
+        //             }
+        //         ]
+        //     },
+        //     "message": null
+        // }
+        const data = this.safeValue (getOrderResponse, 'data');
+        return this.parseOrder (data, market);
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
