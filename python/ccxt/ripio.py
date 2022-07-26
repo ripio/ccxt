@@ -219,7 +219,7 @@ class ripio(Exchange):
             name = self.safe_string(currency, 'name')
             active = self.safe_value(currency, 'active', True)
             precision = self.safe_integer(currency, 'precision')
-            min_withdraw_amount = self.safe_integer(currency, 'min_withdraw_amount')
+            min_withdraw_amount = self.safe_number(currency, 'min_withdraw_amount')
             result[code] = {
                 'id': id,
                 'code': code,
@@ -228,6 +228,8 @@ class ripio(Exchange):
                 'active': active,
                 'fee': None,
                 'precision': precision,
+                'deposit': True,
+                'withdraw': True,
                 'limits': {
                     'amount': {'min': None, 'max': None},
                     'withdraw': {'min': min_withdraw_amount, 'max': None},
@@ -427,7 +429,7 @@ class ripio(Exchange):
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
         ripioSymbol = self.parse_symbol(symbol)
-        uppercaseType = type.upper()
+        uppercaseType = 'LIMITED' if type.upper() == 'LIMIT' else 'MARKET'
         uppercaseSide = side.upper()
         request = {
             'pair': self.market_id(ripioSymbol),
@@ -447,6 +449,8 @@ class ripio(Exchange):
         return response['data']['code']
 
     def cancel_order(self, id, symbol=None, params={}):
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
         self.load_markets()
         ripioSymbol = self.parse_symbol(symbol)
         market = self.market(ripioSymbol)
@@ -519,6 +523,7 @@ class ripio(Exchange):
             raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
         ripioSymbol = self.parse_symbol(symbol)
         self.load_markets()
+        market = self.market(ripioSymbol)
         request = {
             'pair': self.market_id(ripioSymbol),
         }
@@ -576,7 +581,7 @@ class ripio(Exchange):
         # }
         data = self.safe_value(response, 'data', {})
         orders = self.safe_value(data, 'orders', [])
-        return self.parse_orders(orders, None, since, limit)
+        return self.parse_orders(orders, market, since, limit)
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         request = {
@@ -637,8 +642,8 @@ class ripio(Exchange):
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
             'lastTradeTimestamp': lastTradeTimestamp,
-            'symbol': symbol,
-            'type': type,
+            'symbol': symbol.symbol,
+            'type': 'limit' if type == 'limited' else type,
             'timeInForce': None,
             'postOnly': None,
             'side': side,

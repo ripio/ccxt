@@ -210,7 +210,7 @@ class ripio extends Exchange {
             $name = $this->safe_string($currency, 'name');
             $active = $this->safe_value($currency, 'active', true);
             $precision = $this->safe_integer($currency, 'precision');
-            $min_withdraw_amount = $this->safe_integer($currency, 'min_withdraw_amount');
+            $min_withdraw_amount = $this->safe_number($currency, 'min_withdraw_amount');
             $result[$code] = array(
                 'id' => $id,
                 'code' => $code,
@@ -219,6 +219,8 @@ class ripio extends Exchange {
                 'active' => $active,
                 'fee' => null,
                 'precision' => $precision,
+                'deposit' => true,
+                'withdraw' => true,
                 'limits' => array(
                     'amount' => array( 'min' => null, 'max' => null ),
                     'withdraw' => array( 'min' => $min_withdraw_amount, 'max' => null ),
@@ -427,7 +429,7 @@ class ripio extends Exchange {
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
         yield $this->load_markets();
         $ripioSymbol = $this->parse_symbol($symbol);
-        $uppercaseType = strtoupper($type);
+        $uppercaseType = strtoupper($type) === 'LIMIT' ? 'LIMITED' : 'MARKET';
         $uppercaseSide = strtoupper($side);
         $request = array(
             'pair' => $this->market_id($ripioSymbol),
@@ -449,6 +451,9 @@ class ripio extends Exchange {
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
+        if ($symbol === null) {
+            throw new ArgumentsRequired($this->id . ' fetchOrder() requires a $symbol argument');
+        }
         yield $this->load_markets();
         $ripioSymbol = $this->parse_symbol($symbol);
         $market = $this->market($ripioSymbol);
@@ -525,6 +530,7 @@ class ripio extends Exchange {
         }
         $ripioSymbol = $this->parse_symbol($symbol);
         yield $this->load_markets();
+        $market = $this->market($ripioSymbol);
         $request = array(
             'pair' => $this->market_id($ripioSymbol),
         );
@@ -585,7 +591,7 @@ class ripio extends Exchange {
         // }
         $data = $this->safe_value($response, 'data', array());
         $orders = $this->safe_value($data, 'orders', array());
-        return $this->parse_orders($orders, null, $since, $limit);
+        return $this->parse_orders($orders, $market, $since, $limit);
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -650,8 +656,8 @@ class ripio extends Exchange {
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
             'lastTradeTimestamp' => $lastTradeTimestamp,
-            'symbol' => $symbol,
-            'type' => $type,
+            'symbol' => $symbol->symbol,
+            'type' => $type === 'limited' ? 'limit' : $type,
             'timeInForce' => null,
             'postOnly' => null,
             'side' => $side,

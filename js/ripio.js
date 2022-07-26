@@ -209,7 +209,7 @@ module.exports = class ripio extends Exchange {
             const name = this.safeString (currency, 'name');
             const active = this.safeValue (currency, 'active', true);
             const precision = this.safeInteger (currency, 'precision');
-            const min_withdraw_amount = this.safeInteger (currency, 'min_withdraw_amount');
+            const min_withdraw_amount = this.safeNumber (currency, 'min_withdraw_amount');
             result[code] = {
                 'id': id,
                 'code': code,
@@ -218,6 +218,8 @@ module.exports = class ripio extends Exchange {
                 'active': active,
                 'fee': undefined,
                 'precision': precision,
+                'deposit': true,
+                'withdraw': true,
                 'limits': {
                     'amount': { 'min': undefined, 'max': undefined },
                     'withdraw': { 'min': min_withdraw_amount, 'max': undefined },
@@ -426,7 +428,7 @@ module.exports = class ripio extends Exchange {
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
         await this.loadMarkets ();
         const ripioSymbol = this.parseSymbol (symbol);
-        const uppercaseType = type.toUpperCase ();
+        const uppercaseType = type.toUpperCase () === 'LIMIT' ? 'LIMITED' : 'MARKET';
         const uppercaseSide = side.toUpperCase ();
         const request = {
             'pair': this.marketId (ripioSymbol),
@@ -448,6 +450,9 @@ module.exports = class ripio extends Exchange {
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
+        if (symbol === undefined) {
+            throw new ArgumentsRequired (this.id + ' fetchOrder() requires a symbol argument');
+        }
         await this.loadMarkets ();
         const ripioSymbol = this.parseSymbol (symbol);
         const market = this.market (ripioSymbol);
@@ -524,6 +529,7 @@ module.exports = class ripio extends Exchange {
         }
         const ripioSymbol = this.parseSymbol (symbol);
         await this.loadMarkets ();
+        const market = this.market (ripioSymbol);
         const request = {
             'pair': this.marketId (ripioSymbol),
         };
@@ -584,7 +590,7 @@ module.exports = class ripio extends Exchange {
         // }
         const data = this.safeValue (response, 'data', {});
         const orders = this.safeValue (data, 'orders', []);
-        return this.parseOrders (orders, undefined, since, limit);
+        return this.parseOrders (orders, market, since, limit);
     }
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -649,8 +655,8 @@ module.exports = class ripio extends Exchange {
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
             'lastTradeTimestamp': lastTradeTimestamp,
-            'symbol': symbol,
-            'type': type,
+            'symbol': symbol.symbol,
+            'type': type === 'limited' ? 'limit' : type,
             'timeInForce': undefined,
             'postOnly': undefined,
             'side': side,
