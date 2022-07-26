@@ -430,7 +430,9 @@ class ripio(Exchange):
         await self.load_markets()
         ripioSymbol = self.parse_symbol(symbol)
         market = self.market(ripioSymbol)
-        uppercaseType = 'LIMITED' if type.upper() == 'LIMIT' else 'MARKET'
+        uppercaseType = type.upper()
+        if uppercaseType == 'LIMIT':
+            uppercaseType = 'LIMITED'
         uppercaseSide = side.upper()
         request = {
             'pair': self.market_id(ripioSymbol),
@@ -672,6 +674,8 @@ class ripio(Exchange):
         lastTradeTimestamp = self.parse_date(self.safe_string(order, 'update_date'))
         remaining = self.safe_number(order, 'remaining_amount')
         symbol = market
+        if type == 'limited':
+            type = 'limit'
         return {
             'id': code,
             'clientOrderId': None,
@@ -679,8 +683,8 @@ class ripio(Exchange):
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
             'lastTradeTimestamp': lastTradeTimestamp,
-            'symbol': symbol.symbol,
-            'type': 'limit' if type == 'limited' else type,
+            'symbol': symbol['symbol'],
+            'type': type,
             'timeInForce': None,
             'postOnly': None,
             'side': side,

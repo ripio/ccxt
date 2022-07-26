@@ -429,7 +429,10 @@ module.exports = class ripio extends Exchange {
         await this.loadMarkets ();
         const ripioSymbol = this.parseSymbol (symbol);
         const market = this.market (ripioSymbol);
-        const uppercaseType = type.toUpperCase () === 'LIMIT' ? 'LIMITED' : 'MARKET';
+        let uppercaseType = type.toUpperCase ();
+        if (uppercaseType === 'LIMIT') {
+            uppercaseType = 'LIMITED';
+        }
         const uppercaseSide = side.toUpperCase ();
         const request = {
             'pair': this.marketId (ripioSymbol),
@@ -673,7 +676,7 @@ module.exports = class ripio extends Exchange {
         // }
         const code = this.safeString (order, 'code');
         const amount = this.safeNumber (order, 'requested_amount');
-        const type = this.safeStringLower (order, 'subtype');
+        let type = this.safeStringLower (order, 'subtype');
         const price = this.safeNumber (order, 'unit_price');
         const side = this.safeStringLower (order, 'type');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
@@ -685,6 +688,9 @@ module.exports = class ripio extends Exchange {
         const lastTradeTimestamp = this.parseDate (this.safeString (order, 'update_date'));
         const remaining = this.safeNumber (order, 'remaining_amount');
         const symbol = market;
+        if (type === 'limited') {
+            type = 'limit';
+        }
         return {
             'id': code,
             'clientOrderId': undefined,
@@ -692,8 +698,8 @@ module.exports = class ripio extends Exchange {
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
             'lastTradeTimestamp': lastTradeTimestamp,
-            'symbol': symbol.symbol,
-            'type': type === 'limited' ? 'limit' : type,
+            'symbol': symbol['symbol'],
+            'type': type,
             'timeInForce': undefined,
             'postOnly': undefined,
             'side': side,

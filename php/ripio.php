@@ -429,7 +429,10 @@ class ripio extends Exchange {
         $this->load_markets();
         $ripioSymbol = $this->parse_symbol($symbol);
         $market = $this->market($ripioSymbol);
-        $uppercaseType = strtoupper($type) === 'LIMIT' ? 'LIMITED' : 'MARKET';
+        $uppercaseType = strtoupper($type);
+        if ($uppercaseType === 'LIMIT') {
+            $uppercaseType = 'LIMITED';
+        }
         $uppercaseSide = strtoupper($side);
         $request = array(
             'pair' => $this->market_id($ripioSymbol),
@@ -685,6 +688,9 @@ class ripio extends Exchange {
         $lastTradeTimestamp = $this->parse_date($this->safe_string($order, 'update_date'));
         $remaining = $this->safe_number($order, 'remaining_amount');
         $symbol = $market;
+        if ($type === 'limited') {
+            $type = 'limit';
+        }
         return array(
             'id' => $code,
             'clientOrderId' => null,
@@ -692,8 +698,8 @@ class ripio extends Exchange {
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
             'lastTradeTimestamp' => $lastTradeTimestamp,
-            'symbol' => $symbol->symbol,
-            'type' => $type === 'limited' ? 'limit' : $type,
+            'symbol' => $symbol['symbol'],
+            'type' => $type,
             'timeInForce' => null,
             'postOnly' => null,
             'side' => $side,
